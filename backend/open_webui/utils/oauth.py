@@ -39,6 +39,8 @@ from open_webui.config import (
     OAUTH_REFRESH_TOKEN_INCLUDE_SCOPE,
     OAUTH_MERGE_ACCOUNTS_BY_EMAIL,
     OAUTH_PROVIDERS,
+    OAUTH_CLIENT_AD_GROUPS,
+    OAUTH_CLIENT_AD_BASE_DN,
     ENABLE_OAUTH_ROLE_MANAGEMENT,
     ENABLE_OAUTH_GROUP_MANAGEMENT,
     ENABLE_OAUTH_GROUP_CREATION,
@@ -80,6 +82,7 @@ from open_webui.utils.misc import parse_duration
 from open_webui.utils.auth import get_password_hash, create_token
 from open_webui.utils.webhook import post_webhook
 from open_webui.utils.groups import apply_default_group_assignment
+from open_webui.utils.oauth_group_filter import parse_base_dn, parse_group_policy, group_policy_allows
 
 from mcp.shared.auth import (
     OAuthClientMetadata as MCPOAuthClientMetadata,
@@ -925,6 +928,8 @@ class OAuthManager:
     def __init__(self, app):
         self.oauth = OAuth()
         self.app = app
+        self.oidc_group_policy = parse_group_policy(OAUTH_CLIENT_AD_GROUPS) if OAUTH_CLIENT_AD_GROUPS else None
+        self.oidc_group_base_dn = parse_base_dn(OAUTH_CLIENT_AD_BASE_DN) if OAUTH_CLIENT_AD_BASE_DN else None
 
         self._clients = {}
 
@@ -1414,9 +1419,17 @@ class OAuthManager:
                             user_data[key] = value
             if provider == 'feishu' and isinstance(user_data, dict) and 'data' in user_data:
                 user_data = user_data['data']
+            if provider == 'oidc':
+                log.debug('OIDC token response fields: %s', list(token))
+                log.debug('OIDC user claims: %s', dict(user_data) if user_data else None)
             if not user_data:
                 log.warning(f'OAuth callback failed, user data is missing: {token}')
                 raise HTTPException(400, detail=ERROR_MESSAGES.INVALID_CRED)
+
+            if provider == 'oidc' and self.oidc_group_policy is not None:
+                if not group_policy_allows(self.oidc_group_policy, user_data.get('member_of'), self.oidc_group_base_dn):
+                    log.warning('OIDC login denied: member_of does not satisfy OAUTH_CLIENT_AD_GROUPS')
+                    raise HTTPException(status.HTTP_403_FORBIDDEN, detail=ERROR_MESSAGES.ACCESS_PROHIBITED)
 
             # Extract the "sub" claim, using custom claim if configured
             if auth_manager_config.OAUTH_SUB_CLAIM:
