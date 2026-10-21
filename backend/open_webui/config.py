@@ -315,6 +315,8 @@ if JWT_EXPIRES_IN.value == '-1':
 ####################################
 
 ENABLE_OAUTH_PERSISTENT_CONFIG = os.environ.get('ENABLE_OAUTH_PERSISTENT_CONFIG', 'False').lower() == 'true'
+OAUTH_CLIENT_AD_GROUPS = os.environ.get('OAUTH_CLIENT_AD_GROUPS', '').strip()
+OAUTH_CLIENT_AD_BASE_DN = os.environ.get('OAUTH_CLIENT_AD_BASE_DN', '').strip()
 
 ENABLE_OAUTH_SIGNUP = PersistentConfig(
     'ENABLE_OAUTH_SIGNUP',
